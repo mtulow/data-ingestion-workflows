@@ -1,0 +1,10 @@
+pandas
+requests
+wget
+python-dotenv
+prefect
+prefect-aws
+prefect-gcp
+prefect-azure
+dbt-core
+dbt-databricks

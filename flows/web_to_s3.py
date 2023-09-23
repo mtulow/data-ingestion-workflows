@@ -6,6 +6,7 @@ import threading
 import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
+from prefect import flow, task
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
@@ -42,21 +43,30 @@ class ProgressPercentage(object):
                     percentage))
             sys.stdout.flush()
 
+@task(
+    log_prints=True,
+)
 def download_from_web(url: str, file_name: str):
     """Download file from web"""
-    print()
+    print(f'Downloading {file_name} ...')
     wget.download(url, file_name)
-    print()
+    print('Done!')
     return
 
+@task(
+    log_prints=True,
+)
 def compress_file(file_name: str, file_path: str):
     """Compress file"""
-    print()
+    print(f'Compressing {file_name} to {file_path} ...')
     df = pd.read_parquet(file_name)
     df.to_parquet(file_path, engine='pyarrow', compression='gzip')
-    print()
+    print('Done!')
     return
 
+@task(
+    log_prints=True,
+)
 def upload_to_s3(bucket: str, src_file: str, dst_file: str, *, prefix: str = 'trip-data'):
     """
     Ref: https://cloud.google.com/storage/docs/uploading-objects#storage-upload-object-python
@@ -72,19 +82,25 @@ def upload_to_s3(bucket: str, src_file: str, dst_file: str, *, prefix: str = 'tr
 
     client = boto3.client("s3")
     try:
-        print()
-        response = client.upload_file(src_file, bucket, dst_file,
+        print(f'Uploading {src_file} to s3://{bucket}/{prefix}/{dst_file} ...')
+        response = client.upload_file(src_file, bucket, f'{prefix}/{dst_file}',
                                       Config=config,
                                       Callback=ProgressPercentage(src_file),)
-        print()
+        print('\nDone!')
     except ClientError as e:
         logging.error(e)
         raise e
 
+@task(
+    log_prints=True,
+)
 def delete_local_file(file_name: str):
     if os.path.isfile(file_name):
+        print(f'Deleting {file_name}...')
         os.remove(file_name)
+        print('Done!')
 
+@flow
 def web_to_s3(service: str, year: int):
     """Download file from web, compress it, and upload it to S3."""
     # loop through months
@@ -95,6 +111,7 @@ def web_to_s3(service: str, year: int):
         file_path = f'{service}_tripdata_{year:04d}-{month:02d}.parquet.gz'
 
         try:
+            print()
             # download it using wget
             download_from_web(url, file_name)
 
@@ -108,12 +125,13 @@ def web_to_s3(service: str, year: int):
             # delete local file
             delete_local_file(file_name)
             delete_local_file(file_path)
+            print()
 
 
 if __name__ == '__main__':
     print()
-    web_to_s3('green', 2019)
-    web_to_s3('green', 2020)
-    # web_to_s3('yellow', 2019)
-    # web_to_s3('yellow', 2020)
+    # web_to_s3('green', 2019)
+    # web_to_s3('green', 2020)
+    web_to_s3('yellow', 2019)
+    web_to_s3('yellow', 2020)
     print()
